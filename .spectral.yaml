@@ -1,0 +1,69 @@
+# House API standards. Each rule encodes a decision made in openapi.yaml so that
+# later changes can't quietly drift from it. Reusable by other teams as-is.
+extends: ["spectral:oas"]
+rules:
+  operation-tag-defined: off
+
+  paths-are-versioned:
+    description: Business paths carry a major version; only health probes are exempt.
+    severity: error
+    given: "$.paths"
+    then:
+      field: "@key"
+      function: pattern
+      functionOptions:
+        match: "^/(v[0-9]+/|healthz$)"
+
+  paths-are-kebab-case:
+    description: Path segments are kebab-case; parameters are camelCase.
+    severity: error
+    given: "$.paths"
+    then:
+      field: "@key"
+      function: pattern
+      functionOptions:
+        match: "^(/([a-z0-9]+(-[a-z0-9]+)*|\\{[a-z][a-zA-Z0-9]*\\}))+$"
+
+  properties-are-camel-case:
+    description: Never leak upstream casing such as Status, Comments or arr_usd.
+    severity: error
+    given: "$.components.schemas..properties"
+    then:
+      field: "@key"
+      function: casing
+      functionOptions:
+        type: camel
+
+  errors-are-problem-json:
+    description: Every error response uses RFC 9457 application/problem+json.
+    severity: error
+    given: "$.paths[*][*].responses[?(@property >= 400)].content"
+    then:
+      field: "application/problem+json"
+      function: truthy
+
+  operations-declare-security:
+    description: Each operation states its auth explicitly, including public ones.
+    severity: error
+    given: "$.paths[*][get,post,put,patch,delete]"
+    then:
+      field: security
+      function: defined
+
+  operations-document-rate-limit:
+    description: Authenticated operations document their 429.
+    severity: error
+    given: "$.paths[?(@property != '/healthz')][get,post,put,patch,delete].responses"
+    then:
+      field: "429"
+      function: truthy
+
+  operations-document-auth-failures:
+    description: Authenticated operations document 401 and 403.
+    severity: error
+    given: "$.paths[?(@property != '/healthz')][get,post,put,patch,delete].responses"
+    then:
+      - field: "401"
+        function: truthy
+      - field: "403"
+        function: truthy

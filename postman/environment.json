@@ -1,0 +1,25 @@
+{
+  "name": "Local",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "enabled": true
+    },
+    {
+      "key": "idpUrl",
+      "value": "http://localhost:9100",
+      "enabled": true
+    },
+    {
+      "key": "mocksUrl",
+      "value": "http://localhost:9001",
+      "enabled": true
+    },
+    {
+      "key": "receiverUrl",
+      "value": "http://localhost:9002",
+      "enabled": true
+    }
+  ]
+}

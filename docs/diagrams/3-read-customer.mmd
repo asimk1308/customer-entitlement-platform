@@ -1,0 +1,36 @@
+sequenceDiagram
+  autonumber
+  participant C as Client
+  participant A as API
+  participant S as Sources
+  participant E as Entitlements (CSV + XML)
+  participant U as Usage warehouse
+  participant D as platform.db
+
+  C->>A: GET /v1/customers/ACC-007 + bearer token
+  A->>A: Correlation ID, validate JWT, rate limit, check scope
+  par Entitlements, 1.2 s budget
+    A->>S: loadEntitlements()
+    alt Cache younger than 60 s
+      S-->>A: Cached view
+    else Expired: one refresh, everyone waiting shares it
+      S->>E: Fetch CSV and XML, separate breakers
+      alt Both healthy and not empty
+        E-->>S: Rows
+        S->>D: Replace snapshot
+        S-->>A: Fresh view
+      else Failed, bad or empty data
+        S->>D: Load snapshot
+        S-->>A: Snapshot with asOf and reason, or failure if none
+      end
+    end
+  and Usage, 0.5 s budget
+    A->>U: Latest month for this account
+    U-->>A: Usage, or failure recorded as a reason
+  end
+  alt No entitlement data at all
+    A-->>C: 503 problem+json
+  else Entitlements available
+    A->>A: Withhold ARR without the financials scope, listed in redactedFields
+    A-->>C: 200, with degraded and degradedSources. Cache-Control is private, or no-store if degraded
+  end

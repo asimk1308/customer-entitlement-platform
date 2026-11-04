@@ -1,0 +1,37 @@
+flowchart LR
+  subgraph consumers["Consumers"]
+    apps["Apps and iPaaS<br/>(user OAuth token)"]
+    agent["LLM agent<br/>(four tools only)"]
+    person["Person approving<br/>make approve"]
+  end
+  subgraph mcpbox["MCP server (Python, stdio)"]
+    mcp["Tools and guardrails<br/>identity, approval, sanitize,<br/>rate limits, audit"]
+    mcpdb[("mcp.db<br/>approvals, rate_limits,<br/>tool_audit")]
+  end
+  idp["Mock identity provider :9100<br/>JWKS, RFC 8693 token exchange"]
+  subgraph platform["Platform API (Java) :8000"]
+    api["Auth, scopes, aggregation,<br/>idempotency, resilience"]
+    db[("platform.db<br/>idempotency, audit, outbox,<br/>subscriptions, snapshot")]
+    worker["Outbox worker"]
+  end
+  subgraph upstreams["Mock upstreams :9001"]
+    cases["Cases<br/>JSON REST"]
+    ent["Entitlements<br/>CSV + XML"]
+    usage["Usage warehouse<br/>SQL"]
+  end
+  receiver["Webhook receiver :9002<br/>verifies the signature"]
+
+  apps -->|"REST + bearer token"| api
+  agent -->|"MCP tool call"| mcp
+  mcp -->|"sanitized, size-limited result"| agent
+  person -->|"approve, own sign-in"| mcpdb
+  mcp <--> mcpdb
+  mcp -->|"exchange per call"| idp
+  mcp -->|"REST + exchanged token"| api
+  api -->|"fetch signing keys"| idp
+  api <--> db
+  api -->|"timeouts, retries, breaker"| cases
+  api -->|"timeouts, retries, breaker"| ent
+  api -->|"timeouts, retries, breaker"| usage
+  db --> worker
+  worker -->|"signed case.escalated"| receiver

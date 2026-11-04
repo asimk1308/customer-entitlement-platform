@@ -1,0 +1,36 @@
+flowchart TB
+  req(["HTTP request"]) --> filters
+  subgraph filters["1. Every request: web and security"]
+    direction LR
+    corr["CorrelationFilter<br/>correlation ID, request log"] --> chain["SecurityConfig<br/>JWT checks, act claim,<br/>JWKS rate limit"] --> scope["ScopeInterceptor<br/>Principal, scope check"] --> limiter["RateLimiter<br/>per user and agent"]
+  end
+  filters --> controllers
+  subgraph controllers["2. Controllers: api"]
+    direction LR
+    customer["CustomerController<br/>aggregate, partial failure"]
+    caseRead["CaseController<br/>filters, cursor paging"]
+    caseWrite["CaseWriteController<br/>comment, escalate"]
+    subs["WebhookSubscriptionController"]
+    views["Views<br/>API shapes, ARR rule"]
+    problems["ProblemHandler<br/>RFC 9457 errors"]
+  end
+  controllers --> logic
+  subgraph logic["3. Rules and write safety"]
+    direction LR
+    rules["EscalationRules"]
+    idem["Idempotency<br/>claim, lease, commit once"]
+    cursors["Cursors"]
+  end
+  logic --> outbound
+  subgraph outbound["4. Upstream access: upstream"]
+    direction LR
+    sources["Sources<br/>shared entitlement refresh,<br/>snapshot fallback"] --> client["UpstreamClient x4<br/>deadline, backoff, breaker"] --> budget["RetryBudget"]
+    adapters["Adapters<br/>CSV, XML, JSON, crosswalk"]
+  end
+  logic --> persistence
+  subgraph persistence["5. Persistence and events: store, webhook"]
+    direction LR
+    store["Store<br/>JdbcClient, audit"] --> db[("platform.db")] --> outbox["OutboxWorker<br/>retries, dead letters"] --> hooks["Webhooks<br/>signing, URL allow-list"]
+  end
+  outbound --> mocks(["Mock upstreams"])
+  persistence --> receiver(["Webhook receiver"])

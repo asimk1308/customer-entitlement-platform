@@ -1,0 +1,50 @@
+sequenceDiagram
+  autonumber
+  participant C as Client
+  participant A as API
+  participant D as platform.db
+  participant K as Case system
+  participant W as Outbox worker
+  participant R as Webhook receiver
+
+  C->>A: POST /v1/cases/{id}/escalate + Idempotency-Key, If-Match
+  A->>D: Claim key, with a 30 s lease
+  alt Key already completed
+    D-->>A: Stored response
+    A-->>C: Replay, Idempotency-Replayed: true
+  else In progress, lease still held
+    A-->>C: 409, retry shortly
+  else New, or lease expired
+    alt New, or nothing was attempted
+      A->>K: Read case
+      A->>A: Check account access, ETag and business rules
+      opt Rejected: the write was not applied
+        A->>D: Forget the key, audit the rejection
+        A-->>C: 404, 409, 412 or 422 problem+json
+      end
+    else Earlier attempt may have applied the write
+      A->>A: Skip checks, reuse the stored expected version
+    end
+    A->>D: Commit "upstream attempted" before the call
+    A->>K: Transition, with external ID and expected version
+    alt Applied or deduplicated
+      K-->>A: Escalated case
+      A->>D: One transaction: response, audit row, one outbox row per subscriber
+      Note over A,D: If another holder already committed, return its stored response instead
+      A-->>C: 200 + new ETag
+    else Outcome unknown
+      A->>D: Keep the record, release the lease, audit
+      A-->>C: 502, 503 or 504. A retry resumes safely
+    end
+  end
+  loop Every 500 ms, due rows of active subscriptions
+    W->>D: Read due rows
+    W->>R: POST, HMAC-signed. webhook-id is stable across retries
+    alt 2xx
+      W->>D: delivered
+    else 410
+      W->>D: Row dead, subscription inactive, its pending rows dead
+    else Other failure
+      W->>D: Back off and retry, dead after 8 attempts
+    end
+  end

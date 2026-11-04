@@ -1,0 +1,84 @@
+erDiagram
+  webhook_subscriptions ||--o{ outbox_events : "fans out to"
+  outbox_events ||--o{ webhook_deliveries : "attempts"
+  idempotency_keys {
+    text principal PK
+    text route PK
+    text key PK
+    text request_hash
+    text state
+    int upstream_attempted
+    int expected_version
+    text locked_until
+    text expires_at
+  }
+  audit_log {
+    int id PK
+    text at
+    text actor
+    text agent
+    text action
+    text case_id
+    text account_id
+    text outcome
+    text correlation_id
+  }
+  webhook_subscriptions {
+    text id PK
+    text owner
+    text url
+    text events
+    text secret
+    int active
+  }
+  outbox_events {
+    int id PK
+    text event_id
+    text subscription_id FK
+    text payload
+    text status
+    int attempts
+    text next_attempt_at
+  }
+  webhook_deliveries {
+    int outbox_id PK
+    int attempt PK
+    int status_code
+    text error
+  }
+  account_crosswalk {
+    text source PK
+    text source_id PK
+    text account_id
+  }
+  entitlement_snapshot {
+    text account_id PK
+    text payload
+    text as_of
+  }
+  approvals {
+    text id PK
+    text subject
+    text agent
+    text tool
+    text case_id
+    text args_hash
+    text etag
+    text status
+    text expires_at
+  }
+  rate_limits {
+    text key PK
+    int window_start
+    int count
+  }
+  tool_audit {
+    int id PK
+    text subject
+    text agent
+    text tool
+    text args_hash
+    text decision
+    text outcome
+    text correlation_id
+  }

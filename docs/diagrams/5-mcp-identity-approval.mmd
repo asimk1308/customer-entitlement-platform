@@ -1,0 +1,33 @@
+sequenceDiagram
+  autonumber
+  participant M as LLM agent
+  participant S as MCP server
+  participant D as mcp.db
+  participant I as Identity provider
+  participant P as Person
+  participant A as Platform API
+
+  Note over S,I: On start, the server verifies the user's token (audience copilot-mcp). It is never forwarded
+  M->>S: escalate_case(case_id, reason_code, justification)
+  S->>D: Audit the call, before validation
+  S->>S: Check the user holds the scope, and the agent's rate limit
+  S->>I: Exchange for a read-only token
+  S->>A: GET case, to bind its version
+  S->>D: Store pending approval: user, agent, tool, argument hash, ETag
+  S-->>M: pending, apr_... (grants nothing by itself)
+  M-->>P: Asks the person to approve
+  P->>I: Signs in separately (audience the MCP server never holds)
+  P->>D: make approve, shown the exact action
+  M->>S: escalate_case(same arguments, approval_id)
+  S->>D: Consume once. Must match user, agent, tool and arguments, and not be expired
+  S->>I: Exchange: user scopes ∩ agent ceiling ∩ cases:escalate
+  I-->>S: About 60 s, aud platform-api, sub = user, act.sub = agent
+  S->>A: POST escalate. Idempotency-Key = approval ID, If-Match = approved ETag
+  A->>A: Authorize the user, record both identities
+  alt Case changed since approval
+    A-->>S: 412
+    S-->>M: Tell the user, a new approval is needed
+  else Applied
+    A-->>S: 200
+    S-->>M: completed, only what the system confirmed
+  end
